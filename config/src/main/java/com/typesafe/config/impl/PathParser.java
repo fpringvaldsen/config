@@ -9,9 +9,7 @@ import com.typesafe.config.ConfigSyntax;
 import com.typesafe.config.ConfigValueType;
 
 import java.io.StringReader;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 
 final class PathParser {
     static class Element {
@@ -132,8 +130,21 @@ final class PathParser {
                     // we tokenize non-string values is largely an
                     // implementation detail.
                     AbstractConfigValue v = Tokens.getValue(t);
+
+                    // We need to split the tokens on a . so that we can get sub-paths but still preserve
+                    // the original path text when doing an insertion
+                    if (pathTokens != null) {
+                        pathTokens.remove(pathTokens.size() - 1);
+                        pathTokens.addAll(splitTokenOnPeriod(t));
+                    }
                     text = v.transformToString();
                 } else if (Tokens.isUnquotedText(t)) {
+                    // We need to split the tokens on a . so that we can get sub-paths but still preserve
+                    // the original path text when doing an insertion on ConfigNodeObjects
+                    if (pathTokens != null) {
+                        pathTokens.remove(pathTokens.size() - 1);
+                        pathTokens.addAll(splitTokenOnPeriod(t));
+                    }
                     text = Tokens.getUnquotedText(t);
                 } else {
                     throw new ConfigException.BadPath(
@@ -161,6 +172,22 @@ final class PathParser {
         }
 
         return pb.result();
+    }
+
+    private static Collection<Token> splitTokenOnPeriod(Token t) {
+        String tokenText = t.tokenText();
+        if (tokenText.equals(".")) {
+            return Collections.singletonList(t);
+        }
+        String[] splitToken = tokenText.split("\\.");
+        ArrayList<Token> splitTokens = new ArrayList<Token>();
+        for (String s : splitToken) {
+            splitTokens.add(Tokens.newUnquotedText(t.origin(), s));
+            splitTokens.add(Tokens.newUnquotedText(t.origin(), "."));
+        }
+        if (tokenText.charAt(tokenText.length() - 1) != '.')
+            splitTokens.remove(splitTokens.size() - 1);
+        return splitTokens;
     }
 
     private static void addPathText(List<Element> buf, boolean wasQuoted,

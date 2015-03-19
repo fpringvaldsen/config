@@ -50,35 +50,89 @@ final class ConfigNodeObject extends ConfigNodeComplexValue {
 
         // If the desired Path did not exist, add it
         if (node.render().equals(render())) {
-            boolean startsWithBrace = super.children.get(0) instanceof ConfigNodeSingleToken &&
-                                        ((ConfigNodeSingleToken) super.children.get(0)).token() == Tokens.OPEN_CURLY;
-            ArrayList<AbstractConfigNode> childrenCopy = new ArrayList<AbstractConfigNode>(super.children);
-            ArrayList<AbstractConfigNode> newNodes = new ArrayList();
-            newNodes.add(new ConfigNodeSingleToken(Tokens.newLine(null)));
-            if (startsWithBrace)
-                newNodes.add(new ConfigNodeSingleToken(Tokens.newIgnoredWhitespace(null, "\t")));
-            newNodes.add(desiredPath);
-            newNodes.add(new ConfigNodeSingleToken(Tokens.newIgnoredWhitespace(null, " ")));
-            newNodes.add(new ConfigNodeSingleToken(Tokens.COLON));
-            newNodes.add(new ConfigNodeSingleToken(Tokens.newIgnoredWhitespace(null, " ")));
-            newNodes.add(value);
-            newNodes.add(new ConfigNodeSingleToken(Tokens.newLine(null)));
-
-            if (startsWithBrace) {
-                for (int i = childrenCopy.size() - 1; i >= 0; i--) {
-                    if (childrenCopy.get(i) instanceof ConfigNodeSingleToken &&
-                            ((ConfigNodeSingleToken) childrenCopy.get(i)).token == Tokens.CLOSE_CURLY) {
-                        childrenCopy.add(i, new ConfigNodeField(newNodes));
-                        return new ConfigNodeObject(childrenCopy);
-                    }
-                }
-                throw new ConfigException.BugOrBroken("Object had an opening brace, but no closing brace");
-            } else {
-                childrenCopy.add(new ConfigNodeField(newNodes));
-                node = new ConfigNodeObject(childrenCopy);
-            }
+//            boolean startsWithBrace = super.children.get(0) instanceof ConfigNodeSingleToken &&
+//                                        ((ConfigNodeSingleToken) super.children.get(0)).token() == Tokens.OPEN_CURLY;
+//            ArrayList<AbstractConfigNode> childrenCopy = new ArrayList<AbstractConfigNode>(super.children);
+//            ArrayList<AbstractConfigNode> newNodes = new ArrayList();
+//            newNodes.add(new ConfigNodeSingleToken(Tokens.newLine(null)));
+//            if (startsWithBrace)
+//                newNodes.add(new ConfigNodeSingleToken(Tokens.newIgnoredWhitespace(null, "\t")));
+//            newNodes.add(desiredPath);
+//            newNodes.add(new ConfigNodeSingleToken(Tokens.newIgnoredWhitespace(null, " ")));
+//            newNodes.add(new ConfigNodeSingleToken(Tokens.COLON));
+//            newNodes.add(new ConfigNodeSingleToken(Tokens.newIgnoredWhitespace(null, " ")));
+//            newNodes.add(value);
+//            newNodes.add(new ConfigNodeSingleToken(Tokens.newLine(null)));
+//
+//            if (startsWithBrace) {
+//                for (int i = childrenCopy.size() - 1; i >= 0; i--) {
+//                    if (childrenCopy.get(i) instanceof ConfigNodeSingleToken &&
+//                            ((ConfigNodeSingleToken) childrenCopy.get(i)).token == Tokens.CLOSE_CURLY) {
+//                        childrenCopy.add(i, new ConfigNodeField(newNodes));
+//                        return new ConfigNodeObject(childrenCopy);
+//                    }
+//                }
+//                throw new ConfigException.BugOrBroken("Object had an opening brace, but no closing brace");
+//            } else {
+//                childrenCopy.add(new ConfigNodeField(newNodes));
+//                node = new ConfigNodeObject(childrenCopy);
+//            }
+            return addValueOnPath(desiredPath, value);
         }
         return node;
+    }
+
+    protected ConfigNodeObject addValueOnPath(ConfigNodePath desiredPath, AbstractConfigNodeValue value) {
+        Path path = desiredPath.value();
+        ArrayList<AbstractConfigNode> childrenCopy = new ArrayList(super.children);
+        if (path.length() > 1) {
+            for (int i = super.children.size() - 1; i >= 0; i--) {
+                if (!(super.children.get(i) instanceof ConfigNodeField)) {
+                    continue;
+                }
+                ConfigNodeField node = (ConfigNodeField) super.children.get(i);
+                Path key = node.path().value();
+                if (path.startsWith(key) && node.value() instanceof ConfigNodeObject) {
+                    ConfigNodePath remainingPath = desiredPath.subPath(key.length());
+                    ConfigNodeObject newValue = (ConfigNodeObject) node.value();
+                    childrenCopy.set(i, node.replaceValue(newValue.addValueOnPath(remainingPath, value)));
+                    return new ConfigNodeObject(childrenCopy);
+                }
+            }
+        }
+        boolean startsWithBrace = super.children.get(0) instanceof ConfigNodeSingleToken &&
+                ((ConfigNodeSingleToken) super.children.get(0)).token() == Tokens.OPEN_CURLY;
+        ArrayList<AbstractConfigNode> newNodes = new ArrayList();
+        newNodes.add(new ConfigNodeSingleToken(Tokens.newLine(null)));
+        newNodes.add(desiredPath.first());
+        newNodes.add(new ConfigNodeSingleToken(Tokens.newIgnoredWhitespace(null, " ")));
+        newNodes.add(new ConfigNodeSingleToken(Tokens.COLON));
+        newNodes.add(new ConfigNodeSingleToken(Tokens.newIgnoredWhitespace(null, " ")));
+
+        if (path.length() == 1) {
+            newNodes.add(value);
+        } else {
+            ArrayList<AbstractConfigNode> newObjectNodes = new ArrayList();
+            newObjectNodes.add(new ConfigNodeSingleToken(Tokens.OPEN_CURLY));
+            newObjectNodes.add(new ConfigNodeSingleToken(Tokens.CLOSE_CURLY));
+            ConfigNodeObject newObject = new ConfigNodeObject(newObjectNodes);
+            newNodes.add(newObject.addValueOnPath(desiredPath.subPath(1), value));
+        }
+        newNodes.add(new ConfigNodeSingleToken(Tokens.newLine(null)));
+
+        if (startsWithBrace) {
+            for (int i = childrenCopy.size() - 1; i >= 0; i--) {
+                if (childrenCopy.get(i) instanceof ConfigNodeSingleToken &&
+                        ((ConfigNodeSingleToken) childrenCopy.get(i)).token == Tokens.CLOSE_CURLY) {
+                    childrenCopy.add(i, new ConfigNodeField(newNodes));
+                    return new ConfigNodeObject(childrenCopy);
+                }
+            }
+            throw new ConfigException.BugOrBroken("Object had an opening brace, but no closing brace");
+        } else {
+            childrenCopy.add(new ConfigNodeField(newNodes));
+            return new ConfigNodeObject(childrenCopy);
+        }
     }
 
     public ConfigNodeComplexValue removeValueOnPath(String desiredPath) {
